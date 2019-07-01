@@ -9,6 +9,7 @@ import timeit
 import cv2
 # import sys
 import glob
+from tqdm import tqdm
 # sys.path.append('./recognition')
 from recognition.embedding import Embedding
 # from menpo.visualize import print_progress
@@ -45,13 +46,13 @@ def read_image_feature(path):
 
 
 # %%
-def get_image_feature(img_path, img_list_path, model_path, gpu_ids):
+def get_image_feature_and_save(img_path, img_list_path, model_path, gpu_ids):
     img_list = open(img_list_path)
     embedding = Embedding(model_path, 0, gpu_ids)
     files = img_list.readlines()
     img_feats = []
     faceness_scores = []
-    for img_index, each_line in enumerate(files):
+    for img_index, each_line in enumerate(tqdm(files)):
         name_lmk_score = each_line.strip().split(' ')
         img_name = os.path.join(img_path, name_lmk_score[0])
         img = cv2.imread(img_name)
@@ -61,6 +62,8 @@ def get_image_feature(img_path, img_list_path, model_path, gpu_ids):
         faceness_scores.append(name_lmk_score[-1])
     img_feats = np.array(img_feats).astype(np.float32)
     faceness_scores = np.array(faceness_scores).astype(np.float32)
+    np.save("img_feats.npy", img_feats)
+    np.save("faceness_scores.npy", faceness_scores)
     return img_feats, faceness_scores
 
 
@@ -121,7 +124,7 @@ def verification(template_norm_feats=None, unique_templates=None, p1=None, p2=No
         feat1 = template_norm_feats[template2id[p1[s]]]
         feat2 = template_norm_feats[template2id[p2[s]]]
         similarity_score = np.sum(feat1 * feat2, -1)
-        score[s] = similarity_score
+        score[s] = similarity_score.flatten()
         if c % 10 == 0:
             print('Finish {}/{} pairs.'.format(c, total_sublists))
     return score
@@ -172,7 +175,7 @@ img_path = './IJBC/loose_crop'
 img_list_path = './IJBC/meta/ijbc_name_5pts_score.txt'
 model_path = './pretrained_models/MS1MV2-ResNet100-Arcface/model'
 gpu_ids = [0, 1]
-img_feats, faceness_scores = get_image_feature(img_path, img_list_path, model_path, gpu_ids)
+img_feats, faceness_scores = get_image_feature_and_save(img_path, img_list_path, model_path, gpu_ids)
 stop = timeit.default_timer()
 print('Time: %.2f s. ' % (stop - start))
 print('Feature Shape: ({} , {}) .'.format(img_feats.shape[0], img_feats.shape[1]))
@@ -190,17 +193,24 @@ start = timeit.default_timer()
 # 1. FaceScore （Feature Norm）
 # 2. FaceScore （Detector）
 
+if Path("img_feats.npy").exists():
+    img_feats = np.load("img_feats.npy")
+
+if Path("faceness_scores.npy").exists():
+    faceness_scores = np.load("faceness_scores.npy")
+
 use_norm_score = False  # if Ture, TestMode(N1)
 use_detector_score = False  # if Ture, TestMode(D1)
 use_flip_test = False  # if Ture, TestMode(F1)
 
+print("Start calculating template features...")
 if use_flip_test:
     # concat --- F1
     # img_input_feats = img_feats
     # add --- F2
-    img_input_feats = img_feats[:, 0:img_feats.shape[1] / 2] + img_feats[:, img_feats.shape[1] / 2:]
+    img_input_feats = img_feats[:, 0:img_feats.shape[1] // 2] + img_feats[:, img_feats.shape[1] // 2:]
 else:
-    img_input_feats = img_feats[:, 0:img_feats.shape[1] / 2]
+    img_input_feats = img_feats[:, 0:img_feats.shape[1] // 2]
 
 if use_norm_score:
     img_input_feats = img_input_feats
@@ -244,7 +254,7 @@ scores = dict(zip(methods, scores))
 colours = dict(zip(methods, sample_colours_from_colourmap(methods.shape[0], 'Set2')))
 # x_labels = [1/(10**x) for x in np.linspace(6, 0, 6)]
 x_labels = [10 ** -6, 10 ** -5, 10 ** -4, 10 ** -3, 10 ** -2, 10 ** -1]
-tpr_fpr_table = PrettyTable(['Methods'] + map(str, x_labels))
+tpr_fpr_table = PrettyTable(['Methods'] + list(map(str, x_labels)))
 fig = plt.figure()
 for method in methods:
     fpr, tpr, _ = roc_curve(label, scores[method])
@@ -270,7 +280,7 @@ plt.ylabel('True Positive Rate')
 plt.title('ROC on IJB-C')
 plt.legend(loc="lower right")
 plt.show()
-# fig.savefig('IJB-B.pdf')
+fig.savefig('IJB-C.pdf')
 # %%
 print(tpr_fpr_table)
 # %%
