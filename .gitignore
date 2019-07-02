@@ -1,0 +1,12 @@
+.idea
+.vscode
+.ipynb_checkpoints
+IJBB
+IJBC
+pretrained_models
+Pipfile.lock
+**.pyc
+**.mat
+**.npy
+**.png
+**.txt
