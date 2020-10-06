@@ -4,7 +4,6 @@
 IJBB
 IJBC
 pretrained_models
-Pipfile.lock
 **.pyc
 **.mat
 **.npy
